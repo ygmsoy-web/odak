@@ -613,17 +613,6 @@
 
     <div class="sheet-row">
       <div>
-        <div class="sheet-row-label">ORP Vurgusu</div>
-        <div class="sheet-row-sub">Odak harfini turuncu renkle göster</div>
-      </div>
-      <label class="tog">
-        <input type="checkbox" id="orp-tog" checked>
-        <span class="tog-track"></span>
-      </label>
-    </div>
-
-    <div class="sheet-row">
-      <div>
         <div class="sheet-row-label">Noktalama Arası</div>
         <div class="sheet-row-sub">Cümle sonlarında ekstra duraklama</div>
       </div>
@@ -765,10 +754,6 @@ function renderBlock(words) {
   if (!words?.length) return '';
   const fi = Math.floor(words.length / 2);
   return words.map((w, i) => {
-    if (i === fi && S.showORP && w.length > 1) {
-      const p = orpIndex(w);
-      return `<span class="w">${esc(w.slice(0,p))}<span class="orp">${esc(w[p])}</span>${esc(w.slice(p+1))}</span>`;
-    }
     return `<span class="w">${esc(w)}</span>`;
   }).join(' ');
 }
@@ -914,7 +899,8 @@ function updateProg() {
 // ================================================================
 function blockDuration(block) {
   if (!block) return 200;
-  const base = (block.length / S.wpm) * 60000;
+  const wordTime = (S.blkSize / S.wpm) * 60000 * 1.2;
+  const base = Math.max(wordTime, (block.length / S.wpm) * 60000 * 1.2);
   if (!S.pauseAtPunct) return base;
   const last = block[block.length - 1];
   if (SENT_END.test(last))   return base * 1.6;
