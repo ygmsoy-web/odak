@@ -74,6 +74,28 @@
       padding: 22px 20px 14px;
     }
 
+    .daily-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 0 16px 14px;
+      padding: 12px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .daily-label {
+      font-size: 13px;
+      color: var(--text2);
+    }
+    .daily-time {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--accent);
+      font-family: var(--font-ui);
+      letter-spacing: .02em;
+    }
+
     .lib-logo {
       font-family: var(--font-read);
       font-size: 28px;
@@ -224,6 +246,18 @@
     }
     .icon-btn:active { background: var(--bg2); }
 
+    .session-timer {
+      font-family: var(--font-ui);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text2);
+      letter-spacing: .04em;
+      min-width: 52px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .session-timer.running { color: var(--accent); }
+
     .reader-book-title {
       flex: 1;
       font-size: 13px;
@@ -292,11 +326,14 @@
     /* Word display */
     .word-display {
       font-family: var(--font-read);
-      font-size: clamp(22px, 5.5vw, 34px);
+      font-size: clamp(16px, 4vw, 24px);
       line-height: 1.4;
       text-align: center;
       letter-spacing: .01em;
       min-height: 1.4em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .word-display .w { display: inline; }
     .word-display .orp { color: var(--accent); font-weight: 500; }
@@ -584,6 +621,11 @@
     <div class="lib-logo">Odak<span></span></div>
     <button class="add-btn" id="add-btn">+ Kitap Ekle</button>
   </div>
+
+  <div class="daily-bar" id="daily-bar">
+    <div class="daily-label">Bugün</div>
+    <div class="daily-time" id="daily-time">0 dk</div>
+  </div>
   <input type="file" id="file-input" accept=".pdf,.epub" style="display:none">
 
   <div class="book-list" id="book-list">
@@ -601,6 +643,7 @@
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
     <div class="reader-book-title" id="reader-title">—</div>
+    <div class="session-timer" id="session-timer">00:00</div>
     <button class="icon-btn" id="settings-btn" aria-label="Ayarlar">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     </button>
@@ -730,8 +773,60 @@ const S = {
 };
 
 // ================================================================
-// INDEXEDDB
+// SESSION TIMER
 // ================================================================
+const T = { elapsed: 0, interval: null };
+
+function timerStart() {
+  if (T.interval) return;
+  const el = document.getElementById('session-timer');
+  el.classList.add('running');
+  const tick = Date.now() - T.elapsed * 1000;
+  T.interval = setInterval(() => {
+    T.elapsed = Math.floor((Date.now() - tick) / 1000);
+    el.textContent = fmtTimer(T.elapsed);
+  }, 500);
+}
+
+function timerStop() {
+  if (!T.interval) return;
+  clearInterval(T.interval);
+  T.interval = null;
+  document.getElementById('session-timer').classList.remove('running');
+  // Save elapsed seconds to today's daily total
+  saveDailyTime(T.elapsed);
+}
+
+function timerReset() {
+  timerStop();
+  T.elapsed = 0;
+  document.getElementById('session-timer').textContent = '00:00';
+}
+
+// ── Daily reading time ──────────────────────
+const dailyKey = () => `odak_daily_${new Date().toISOString().slice(0,10)}`;
+
+function saveDailyTime(seconds) {
+  const key = dailyKey();
+  const prev = parseInt(localStorage.getItem(key) || '0', 10);
+  localStorage.setItem(key, prev + seconds);
+}
+
+function getDailyTime() {
+  return parseInt(localStorage.getItem(dailyKey()) || '0', 10);
+}
+
+function fmtTimer(s) {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0)
+    return `${pad(h)}:${pad(m)}:${pad(sec)}`;
+  return `${pad(m)}:${pad(sec)}`;
+}
+function pad(n) { return String(n).padStart(2, '0'); }
+
+
 function openDB() {
   return new Promise((res, rej) => {
     const r = indexedDB.open('odak-v1', 1);
@@ -917,6 +1012,16 @@ function renderLibrary() {
   const list = document.getElementById('book-list');
   const empty = document.getElementById('empty-state');
 
+  // Update daily reading time
+  const ds = getDailyTime();
+  const dm = Math.floor(ds / 60);
+  const dh = Math.floor(dm / 60);
+  let dlabel;
+  if (dh > 0) dlabel = `${dh} sa ${dm % 60} dk`;
+  else if (dm > 0) dlabel = `${dm} dk`;
+  else dlabel = `${ds} sn`;
+  document.getElementById('daily-time').textContent = dlabel;
+
   // Clear previous items (keep empty-state node)
   [...list.querySelectorAll('.book-item')].forEach(el => el.remove());
 
@@ -965,6 +1070,7 @@ function openBook(book) {
   S.idx = Math.min(loadProgress(book.id), S.blocks.length - 1);
   S.idx = Math.max(0, S.idx);
 
+  timerReset();
   document.getElementById('reader-title').textContent = book.title;
   document.getElementById('rsvp-bar').style.top = S.barTop + '%';
 
@@ -1009,6 +1115,7 @@ function scheduleNext() {
       scheduleNext();
     } else {
       S.playing = false;
+      timerStop();
       setPlayIcon(false);
       toast('Bitti 🎉');
     }
@@ -1019,6 +1126,7 @@ function play() {
   if (S.idx >= S.blocks.length - 1) S.idx = 0;
   S.playing = true;
   setPlayIcon(true);
+  timerStart();
   displayBlock();
   scheduleNext();
 }
@@ -1027,6 +1135,7 @@ function pause() {
   S.playing = false;
   clearTimeout(S.timer);
   setPlayIcon(false);
+  timerStop();
 }
 
 function togglePlay() {
@@ -1148,6 +1257,7 @@ async function init() {
   // ── Back
   document.getElementById('back-btn').addEventListener('click', () => {
     pause();
+    timerReset();
     showView('library');
     loadLibrary();
   });
