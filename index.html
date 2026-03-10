@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#F4F1EA">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Odak — Hızlı Okuma</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;1,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/epubjs/0.3.93/epub.min.js"></script>
+
+  <style>
+    :root {
+      --bg:       #F4F1EA;
+      --bg2:      #EAE6DC;
+      --surface:  #FFFFFF;
+      --text:     #1A1714;
+      --text2:    #7A746A;
+      --accent:   #C4711A;
+      --accent2:  #E08B2A;
+      --border:   #DDD8CE;
+      --bar-bg:   rgba(255,255,255,0.94);
+      --radius:   14px;
+      --font-ui:  'DM Sans', sans-serif;
+      --font-read:'Lora', serif;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0; padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      font-family: var(--font-ui);
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    body { height: 100dvh; }
+
+    /* ── VIEWS ──────────────────────────────── */
+    .view {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      transition: opacity .2s ease, transform .2s ease;
+    }
+    .view.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(10px);
+    }
+
+    /* ── LIBRARY ──────────────────────────── */
+    #lib-view {
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    .lib-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 22px 20px 14px;
+    }
+
+    .lib-logo {
+      font-family: var(--font-read);
+      font-size: 28px;
+      font-weight: 400;
+      letter-spacing: -.3px;
+      color: var(--text);
+    }
+    .lib-logo span {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      margin-left: 3px;
+      vertical-align: super;
+    }
+
+    .add-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--text);
+      color: var(--bg);
+      border: none;
+      border-radius: 100px;
+      padding: 10px 20px;
+      font-family: var(--font-ui);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    .add-btn:active { opacity: .7; }
+
+    .book-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 16px 20px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 60vh;
+      gap: 14px;
+      color: var(--text2);
+    }
+    .empty-icon { font-size: 52px; opacity: .35; }
+    .empty-state p {
+      font-size: 15px;
+      text-align: center;
+      line-height: 1.65;
+    }
+
+    .book-item {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 14px;
+      background: var(--surface);
+      border-radius: var(--radius);
+      margin-bottom: 10px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: transform .1s, box-shadow .1s;
+    }
+    .book-item:active { transform: scale(.98); }
+
+    .book-thumb {
+      width: 40px; height: 52px;
+      border-radius: 5px;
+      background: var(--bg2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+
+    .book-info { flex: 1; min-width: 0; }
+    .book-name {
+      font-size: 14px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 3px;
+    }
+    .book-meta {
+      font-size: 12px;
+      color: var(--text2);
+      margin-bottom: 8px;
+    }
+    .book-bar {
+      width: 100%;
+      height: 3px;
+      background: var(--bg2);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .book-bar-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    .book-del {
+      flex-shrink: 0;
+      width: 30px; height: 30px;
+      border: none;
+      background: transparent;
+      color: var(--text2);
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .book-del:active { background: var(--bg2); }
+
+    /* ── READER ────────────────────────────── */
+    #reader-view { background: var(--bg); }
+
+    .reader-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      padding-top: calc(10px + env(safe-area-inset-top, 0px));
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+      z-index: 10;
+      flex-shrink: 0;
+    }
+
+    .icon-btn {
+      width: 38px; height: 38px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      color: var(--text);
+      flex-shrink: 0;
+    }
+    .icon-btn:active { background: var(--bg2); }
+
+    .reader-book-title {
+      flex: 1;
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--text2);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ── RSVP AREA ─────────────────────────── */
+    .rsvp-area {
+      position: relative;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .prog-line {
+      position: absolute;
+      top: 0; left: 0;
+      height: 2px;
+      background: var(--accent);
+      z-index: 5;
+      transition: width .4s linear;
+    }
+
+    /* The bar itself */
+    .rsvp-bar {
+      position: absolute;
+      left: 0; right: 0;
+      transform: translateY(-50%);
+      background: var(--bar-bg);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 26px 20px 26px 36px;
+      z-index: 10;
+      user-select: none;
+    }
+
+    /* Drag handle */
+    .drag-handle {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: grab;
+      touch-action: none;
+    }
+    .drag-handle:active { cursor: grabbing; }
+    .drag-dots {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .drag-dots i {
+      display: block;
+      width: 3px; height: 3px;
+      border-radius: 50%;
+      background: var(--border);
+    }
+
+    /* Word display */
+    .word-display {
+      font-family: var(--font-read);
+      font-size: clamp(22px, 5.5vw, 34px);
+      line-height: 1.4;
+      text-align: center;
+      letter-spacing: .01em;
+      min-height: 1.4em;
+    }
+    .word-display .w { display: inline; }
+    .word-display .orp { color: var(--accent); font-weight: 500; }
+
+    /* ── CONTROLS ───────────────────────────── */
+    .reader-controls {
+      flex-shrink: 0;
+      padding: 12px 16px;
+      padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+      border-top: 1px solid var(--border);
+      background: var(--bg);
+    }
+
+    .ctrl-row1 {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .ctrl-btn {
+      width: 46px; height: 46px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 12px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 17px;
+      color: var(--text);
+      transition: background .1s;
+    }
+    .ctrl-btn:active { background: var(--bg2); }
+
+    #play-btn {
+      width: 58px; height: 58px;
+      background: var(--text);
+      color: var(--bg);
+      border: none;
+      border-radius: 50%;
+      font-size: 22px;
+    }
+    #play-btn:active { opacity: .8; }
+
+    .ctrl-row2 {
+      display: flex;
+      align-items: stretch;
+      gap: 8px;
+    }
+
+    .stepper {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .step-btn {
+      width: 38px; height: 44px;
+      border: none;
+      background: transparent;
+      font-size: 20px;
+      font-weight: 300;
+      cursor: pointer;
+      color: var(--text);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .step-btn:active { background: var(--bg2); }
+
+    .step-val {
+      flex: 1;
+      text-align: center;
+    }
+    .step-num {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.1;
+    }
+    .step-lbl {
+      display: block;
+      font-size: 10px;
+      color: var(--text2);
+    }
+
+    /* ── SETTINGS SHEET ─────────────────────── */
+    .sheet-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.28);
+      z-index: 50;
+      opacity: 0; pointer-events: none;
+      transition: opacity .2s;
+    }
+    .sheet-overlay.open {
+      opacity: 1;
+      pointer-events: all;
+    }
+    .sheet {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      background: var(--surface);
+      border-radius: 20px 20px 0 0;
+      padding: 0 20px calc(20px + env(safe-area-inset-bottom, 0px));
+      transform: translateY(100%);
+      transition: transform .25s cubic-bezier(.4,0,.2,1);
+    }
+    .sheet-overlay.open .sheet { transform: translateY(0); }
+
+    .sheet-handle {
+      width: 40px; height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      margin: 14px auto 18px;
+    }
+
+    .sheet-title {
+      font-family: var(--font-read);
+      font-size: 18px;
+      font-weight: 400;
+      margin-bottom: 16px;
+    }
+
+    .sheet-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .sheet-row:last-child { border-bottom: none; }
+
+    .sheet-row-label { font-size: 14px; font-weight: 500; }
+    .sheet-row-sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
+
+    /* Block size chips */
+    .chip-group { display: flex; gap: 8px; }
+    .chip {
+      width: 42px; height: 36px;
+      border: 1px solid var(--border);
+      background: transparent;
+      border-radius: 10px;
+      font-family: var(--font-ui);
+      font-size: 14px; font-weight: 500;
+      cursor: pointer;
+      transition: background .1s, color .1s;
+    }
+    .chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+
+    /* Toggle */
+    .tog { position: relative; display: inline-block; width: 44px; height: 24px; }
+    .tog input { opacity: 0; width: 0; height: 0; }
+    .tog-track {
+      position: absolute; inset: 0;
+      background: var(--border); border-radius: 24px;
+      transition: background .2s; cursor: pointer;
+    }
+    .tog-track::before {
+      content: '';
+      position: absolute;
+      width: 18px; height: 18px;
+      left: 3px; bottom: 3px;
+      background: #fff; border-radius: 50%;
+      transition: transform .2s;
+    }
+    .tog input:checked ~ .tog-track { background: var(--accent); }
+    .tog input:checked ~ .tog-track::before { transform: translateX(20px); }
+
+    /* ── LOADING ────────────────────────────── */
+    .loading-veil {
+      position: fixed; inset: 0;
+      background: var(--bg);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      opacity: 0; pointer-events: none;
+      transition: opacity .2s;
+    }
+    .loading-veil.show { opacity: 1; pointer-events: all; }
+    .spinner {
+      width: 34px; height: 34px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-msg { font-size: 14px; color: var(--text2); }
+
+    /* ── TOAST ──────────────────────────────── */
+    .toast {
+      position: fixed;
+      bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+      left: 50%; transform: translateX(-50%) translateY(12px);
+      background: var(--text);
+      color: var(--bg);
+      padding: 10px 18px;
+      border-radius: 100px;
+      font-size: 13px;
+      white-space: nowrap;
+      opacity: 0;
+      transition: opacity .2s, transform .2s;
+      pointer-events: none;
+      z-index: 200;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<!-- LIBRARY VIEW -->
+<div class="view" id="lib-view">
+  <div class="lib-header">
+    <div class="lib-logo">Odak<span></span></div>
+    <button class="add-btn" id="add-btn">+ Kitap Ekle</button>
+  </div>
+  <input type="file" id="file-input" accept=".pdf,.epub" style="display:none">
+
+  <div class="book-list" id="book-list">
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon">📚</div>
+      <p>Henüz kitap yok.<br>PDF veya ePub dosyası ekle.</p>
+    </div>
+  </div>
+</div>
+
+<!-- READER VIEW -->
+<div class="view hidden" id="reader-view">
+  <div class="reader-top">
+    <button class="icon-btn" id="back-btn" aria-label="Geri">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <div class="reader-book-title" id="reader-title">—</div>
+    <button class="icon-btn" id="settings-btn" aria-label="Ayarlar">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </div>
+
+  <div class="rsvp-area" id="rsvp-area">
+    <div class="prog-line" id="prog-line" style="width:0%"></div>
+
+    <div class="rsvp-bar" id="rsvp-bar" style="top:45%">
+      <div class="drag-handle" id="drag-handle">
+        <div class="drag-dots">
+          <i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+      </div>
+      <div class="word-display" id="word-display">
+        <span class="w">Oynat</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="reader-controls">
+    <div class="ctrl-row1">
+      <button class="ctrl-btn" id="prev-btn" title="10 blok geri">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+      </button>
+      <button class="ctrl-btn" id="step-back-btn" title="1 blok geri">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <button class="ctrl-btn" id="play-btn" title="Oynat/Duraklat">▶</button>
+      <button class="ctrl-btn" id="step-fwd-btn" title="1 blok ileri">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+      <button class="ctrl-btn" id="next-btn" title="10 blok ileri">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zm2.5-6 6-4.25v8.5L8.5 12zM16 6h2v12h-2z"/></svg>
+      </button>
+    </div>
+    <div class="ctrl-row2">
+      <div class="stepper">
+        <button class="step-btn" id="wpm-dn">−</button>
+        <div class="step-val">
+          <span class="step-num" id="wpm-val">250</span>
+          <span class="step-lbl">kelime/dk</span>
+        </div>
+        <button class="step-btn" id="wpm-up">+</button>
+      </div>
+      <div class="stepper">
+        <button class="step-btn" id="blk-dn">−</button>
+        <div class="step-val">
+          <span class="step-num" id="blk-val">3</span>
+          <span class="step-lbl">kelime/blok</span>
+        </div>
+        <button class="step-btn" id="blk-up">+</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS SHEET -->
+<div class="sheet-overlay" id="sheet-overlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Okuma Ayarları</div>
+
+    <div class="sheet-row">
+      <div>
+        <div class="sheet-row-label">Blok Boyutu</div>
+        <div class="sheet-row-sub">Her seferinde kaç kelime gösterilsin</div>
+      </div>
+      <div class="chip-group">
+        <button class="chip" data-size="2">2</button>
+        <button class="chip on" data-size="3">3</button>
+        <button class="chip" data-size="4">4</button>
+      </div>
+    </div>
+
+    <div class="sheet-row">
+      <div>
+        <div class="sheet-row-label">ORP Vurgusu</div>
+        <div class="sheet-row-sub">Odak harfini turuncu renkle göster</div>
+      </div>
+      <label class="tog">
+        <input type="checkbox" id="orp-tog" checked>
+        <span class="tog-track"></span>
+      </label>
+    </div>
+
+    <div class="sheet-row">
+      <div>
+        <div class="sheet-row-label">Noktalama Arası</div>
+        <div class="sheet-row-sub">Cümle sonlarında ekstra duraklama</div>
+      </div>
+      <label class="tog">
+        <input type="checkbox" id="pause-tog" checked>
+        <span class="tog-track"></span>
+      </label>
+    </div>
+  </div>
+</div>
+
+<!-- LOADING VEIL -->
+<div class="loading-veil" id="loading-veil">
+  <div class="spinner"></div>
+  <div class="loading-msg" id="loading-msg">Yükleniyor…</div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ================================================================
+// PDF.js worker
+// ================================================================
+if (typeof pdfjsLib !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+// ================================================================
+// STATE
+// ================================================================
+const S = {
+  view: 'library',
+  books: [],
+  book: null,
+  blocks: [],
+  idx: 0,
+  wpm: 250,
+  blkSize: 3,
+  playing: false,
+  timer: null,
+  barTop: 45,
+  showORP: true,
+  pauseAtPunct: true,
+  db: null,
+};
+
+// ================================================================
+// INDEXEDDB
+// ================================================================
+function openDB() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('odak-v1', 1);
+    r.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('books'))
+        db.createObjectStore('books', { keyPath: 'id', autoIncrement: true });
+    };
+    r.onsuccess = e => res(e.target.result);
+    r.onerror = e => rej(e.target.error);
+  });
+}
+const dbOp = (mode, fn) => new Promise((res, rej) => {
+  const tx = S.db.transaction('books', mode);
+  const st = tx.objectStore('books');
+  const r = fn(st);
+  r.onsuccess = () => res(r.result);
+  r.onerror = () => rej(r.error);
+});
+const dbAll   = () => dbOp('readonly',  s => s.getAll());
+const dbAdd   = b  => dbOp('readwrite', s => s.add(b));
+const dbDel   = id => dbOp('readwrite', s => s.delete(id));
+
+// ================================================================
+// PROGRESS
+// ================================================================
+const progKey = id => `odak_prog_${id}`;
+const saveProgress = (id, idx) =>
+  localStorage.setItem(progKey(id), JSON.stringify({ idx, ts: Date.now() }));
+const loadProgress = id => {
+  try { return JSON.parse(localStorage.getItem(progKey(id)))?.idx ?? 0; } catch { return 0; }
+};
+
+// ================================================================
+// TEXT PROCESSING
+// ================================================================
+// Sentence/clause boundary characters
+const BOUNDARY = /[.!?;:,—–\-](['"""»\)])?$/;
+// Sentence end (longer pause)
+const SENT_END  = /[.!?]['"""»\)]?$/;
+
+function textToBlocks(text, blkSize) {
+  // Normalize
+  text = text
+    .replace(/\r\n|\r/g, '\n')
+    .replace(/\n{2,}/g, '  ') // double newline → space
+    .replace(/\n/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const tokens = text.split(' ').filter(t => t.length > 0);
+  const blocks = [];
+  let cur = [];
+
+  for (const tok of tokens) {
+    cur.push(tok);
+    const hasBoundary = BOUNDARY.test(tok);
+    if (hasBoundary || cur.length >= blkSize) {
+      blocks.push([...cur]);
+      cur = [];
+    }
+  }
+  if (cur.length) blocks.push([...cur]);
+  return blocks;
+}
+
+function orpIndex(word) {
+  // Strip non-letter chars for measurement
+  const letters = [...word].filter(c => /\p{L}/u.test(c));
+  if (letters.length === 0) return 0;
+  const pos = Math.max(1, Math.floor(letters.length * 0.30));
+  // Map back to original index
+  let lc = 0;
+  for (let i = 0; i < word.length; i++) {
+    if (/\p{L}/u.test(word[i])) {
+      if (lc === pos) return i;
+      lc++;
+    }
+  }
+  return Math.min(1, word.length - 1);
+}
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderBlock(words) {
+  if (!words?.length) return '';
+  const fi = Math.floor(words.length / 2);
+  return words.map((w, i) => {
+    if (i === fi && S.showORP && w.length > 1) {
+      const p = orpIndex(w);
+      return `<span class="w">${esc(w.slice(0,p))}<span class="orp">${esc(w[p])}</span>${esc(w.slice(p+1))}</span>`;
+    }
+    return `<span class="w">${esc(w)}</span>`;
+  }).join(' ');
+}
+
+// ================================================================
+// PDF EXTRACTION
+// ================================================================
+async function extractPDF(file) {
+  const ab = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+  const parts = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const tc = await page.getTextContent();
+    let line = '';
+    for (const item of tc.items) {
+      if (item.hasEOL) {
+        line += item.str + '\n';
+      } else {
+        line += item.str + ' ';
+      }
+    }
+    parts.push(line);
+  }
+  return parts.join('\n').trim();
+}
+
+// ================================================================
+// EPUB EXTRACTION
+// ================================================================
+async function extractEPUB(file) {
+  const ab = await file.arrayBuffer();
+  const book = ePub(ab);
+  await book.ready;
+
+  const texts = [];
+  const items = [];
+  book.spine.each(item => items.push(item));
+
+  for (const item of items) {
+    try {
+      await item.load(book.load.bind(book));
+      if (item.document?.body) {
+        texts.push(item.document.body.textContent);
+      }
+      item.unload();
+    } catch (e) { /* skip bad sections */ }
+  }
+  return texts.join('\n').trim();
+}
+
+// ================================================================
+// LIBRARY
+// ================================================================
+async function loadLibrary() {
+  S.books = await dbAll();
+  renderLibrary();
+}
+
+function pctDone(book) {
+  if (!book.blockCount) return 0;
+  return Math.round((loadProgress(book.id) / book.blockCount) * 100);
+}
+
+function renderLibrary() {
+  const list = document.getElementById('book-list');
+  const empty = document.getElementById('empty-state');
+
+  // Clear previous items (keep empty-state node)
+  [...list.querySelectorAll('.book-item')].forEach(el => el.remove());
+
+  if (!S.books.length) {
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  for (const book of S.books) {
+    const pct = pctDone(book);
+    const div = document.createElement('div');
+    div.className = 'book-item';
+    div.innerHTML = `
+      <div class="book-thumb">${book.type === 'epub' ? '📖' : '📄'}</div>
+      <div class="book-info">
+        <div class="book-name">${esc(book.title)}</div>
+        <div class="book-meta">${book.type.toUpperCase()} · ${fmtDate(book.addedAt)} · %${pct}</div>
+        <div class="book-bar"><div class="book-bar-fill" style="width:${pct}%"></div></div>
+      </div>
+      <button class="book-del" data-id="${book.id}" aria-label="Sil">×</button>
+    `;
+    div.querySelector('.book-info').addEventListener('click', () => openBook(book));
+    div.querySelector('.book-thumb').addEventListener('click', () => openBook(book));
+    div.querySelector('.book-del').addEventListener('click', async e => {
+      e.stopPropagation();
+      if (!confirm(`"${book.title}" silinsin mi?`)) return;
+      await dbDel(book.id);
+      localStorage.removeItem(progKey(book.id));
+      await loadLibrary();
+    });
+    list.appendChild(div);
+  }
+}
+
+function fmtDate(ts) {
+  return new Date(ts).toLocaleDateString('tr-TR', { day:'numeric', month:'short', year:'numeric' });
+}
+
+// ================================================================
+// OPEN BOOK
+// ================================================================
+function openBook(book) {
+  S.book = book;
+  S.blocks = textToBlocks(book.text, S.blkSize);
+  S.idx = Math.min(loadProgress(book.id), S.blocks.length - 1);
+  S.idx = Math.max(0, S.idx);
+
+  document.getElementById('reader-title').textContent = book.title;
+  document.getElementById('rsvp-bar').style.top = S.barTop + '%';
+
+  displayBlock();
+  updateProg();
+  showView('reader');
+}
+
+// ================================================================
+// DISPLAY
+// ================================================================
+function displayBlock() {
+  const block = S.blocks[S.idx];
+  if (!block) return;
+  document.getElementById('word-display').innerHTML = renderBlock(block);
+  updateProg();
+}
+
+function updateProg() {
+  if (!S.blocks.length) return;
+  const pct = (S.idx / (S.blocks.length - 1)) * 100;
+  document.getElementById('prog-line').style.width = pct + '%';
+}
+
+// ================================================================
+// PLAYBACK
+// ================================================================
+function blockDuration(block) {
+  if (!block) return 200;
+  const base = (block.length / S.wpm) * 60000;
+  if (!S.pauseAtPunct) return base;
+  const last = block[block.length - 1];
+  if (SENT_END.test(last))   return base * 1.6;
+  if (BOUNDARY.test(last))   return base * 1.25;
+  return base;
+}
+
+function scheduleNext() {
+  if (!S.playing) return;
+  const dur = blockDuration(S.blocks[S.idx]);
+  S.timer = setTimeout(() => {
+    if (!S.playing) return;
+    if (S.idx < S.blocks.length - 1) {
+      S.idx++;
+      displayBlock();
+      saveProgress(S.book.id, S.idx);
+      scheduleNext();
+    } else {
+      S.playing = false;
+      setPlayIcon(false);
+      toast('Bitti 🎉');
+    }
+  }, dur);
+}
+
+function play() {
+  if (S.idx >= S.blocks.length - 1) S.idx = 0;
+  S.playing = true;
+  setPlayIcon(true);
+  displayBlock();
+  scheduleNext();
+}
+
+function pause() {
+  S.playing = false;
+  clearTimeout(S.timer);
+  setPlayIcon(false);
+}
+
+function togglePlay() {
+  S.playing ? pause() : play();
+}
+
+function setPlayIcon(playing) {
+  document.getElementById('play-btn').textContent = playing ? '⏸' : '▶';
+}
+
+// ================================================================
+// DRAG BAR
+// ================================================================
+function initDrag() {
+  const handle = document.getElementById('drag-handle');
+  const bar    = document.getElementById('rsvp-bar');
+  const area   = document.getElementById('rsvp-area');
+  let dragging = false;
+
+  const move = clientY => {
+    if (!dragging) return;
+    const r = area.getBoundingClientRect();
+    const pct = ((clientY - r.top) / r.height) * 100;
+    S.barTop = Math.max(8, Math.min(92, pct));
+    bar.style.top = S.barTop + '%';
+  };
+
+  handle.addEventListener('touchstart', e => { dragging = true; e.preventDefault(); }, { passive: false });
+  window.addEventListener('touchmove',  e => { if (dragging) move(e.touches[0].clientY); }, { passive: true });
+  window.addEventListener('touchend',   () => { dragging = false; });
+
+  handle.addEventListener('mousedown', e => { dragging = true; e.preventDefault(); });
+  window.addEventListener('mousemove', e => { if (dragging) move(e.clientY); });
+  window.addEventListener('mouseup',   () => { dragging = false; });
+}
+
+// ================================================================
+// VIEW SWITCH
+// ================================================================
+function showView(v) {
+  document.getElementById('lib-view').classList.toggle('hidden', v !== 'library');
+  document.getElementById('reader-view').classList.toggle('hidden', v !== 'reader');
+  S.view = v;
+}
+
+// ================================================================
+// LOADING / TOAST
+// ================================================================
+function showLoad(msg) {
+  document.getElementById('loading-msg').textContent = msg;
+  document.getElementById('loading-veil').classList.add('show');
+}
+function hideLoad() {
+  document.getElementById('loading-veil').classList.remove('show');
+}
+
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
+}
+
+// ================================================================
+// IMPORT
+// ================================================================
+async function importFile(file) {
+  showLoad('Kitap işleniyor…');
+  try {
+    const type = file.name.toLowerCase().endsWith('.epub') ? 'epub' : 'pdf';
+    let text = type === 'pdf'
+      ? await extractPDF(file)
+      : await extractEPUB(file);
+
+    text = text.trim();
+    if (text.length < 30) {
+      alert('Metin çıkarılamadı. Dosya taranmış görüntü içeriyor olabilir.');
+      return;
+    }
+
+    const title = file.name.replace(/\.(pdf|epub)$/i, '');
+    const blockCount = textToBlocks(text, 3).length;
+
+    await dbAdd({ title, type, text, blockCount, addedAt: Date.now() });
+    await loadLibrary();
+    toast('Kitap eklendi ✓');
+  } catch (err) {
+    console.error(err);
+    alert('Hata: ' + err.message);
+  } finally {
+    hideLoad();
+  }
+}
+
+// ================================================================
+// INIT
+// ================================================================
+async function init() {
+  S.db = await openDB();
+  await loadLibrary();
+  initDrag();
+
+  // SW
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+
+  // ── Import
+  document.getElementById('add-btn').addEventListener('click', () =>
+    document.getElementById('file-input').click());
+  document.getElementById('file-input').addEventListener('change', async e => {
+    const f = e.target.files[0];
+    if (f) await importFile(f);
+    e.target.value = '';
+  });
+
+  // ── Back
+  document.getElementById('back-btn').addEventListener('click', () => {
+    pause();
+    showView('library');
+    loadLibrary();
+  });
+
+  // ── Playback
+  document.getElementById('play-btn').addEventListener('click', togglePlay);
+
+  document.getElementById('step-back-btn').addEventListener('click', () => {
+    pause();
+    S.idx = Math.max(0, S.idx - 1);
+    displayBlock();
+    saveProgress(S.book?.id, S.idx);
+  });
+  document.getElementById('step-fwd-btn').addEventListener('click', () => {
+    pause();
+    S.idx = Math.min(S.blocks.length - 1, S.idx + 1);
+    displayBlock();
+    saveProgress(S.book?.id, S.idx);
+  });
+  document.getElementById('prev-btn').addEventListener('click', () => {
+    pause();
+    S.idx = Math.max(0, S.idx - 10);
+    displayBlock();
+    saveProgress(S.book?.id, S.idx);
+  });
+  document.getElementById('next-btn').addEventListener('click', () => {
+    pause();
+    S.idx = Math.min(S.blocks.length - 1, S.idx + 10);
+    displayBlock();
+    saveProgress(S.book?.id, S.idx);
+  });
+
+  // ── WPM
+  document.getElementById('wpm-dn').addEventListener('click', () => {
+    S.wpm = Math.max(50, S.wpm - 50);
+    document.getElementById('wpm-val').textContent = S.wpm;
+  });
+  document.getElementById('wpm-up').addEventListener('click', () => {
+    S.wpm = Math.min(1200, S.wpm + 50);
+    document.getElementById('wpm-val').textContent = S.wpm;
+  });
+
+  // ── Block size (controls row)
+  const updateBlkDisplay = () => {
+    document.getElementById('blk-val').textContent = S.blkSize;
+    document.querySelectorAll('.chip').forEach(c =>
+      c.classList.toggle('on', +c.dataset.size === S.blkSize));
+  };
+  const reprocess = () => {
+    if (!S.book) return;
+    const wasPlaying = S.playing;
+    pause();
+    const pct = S.blocks.length ? S.idx / S.blocks.length : 0;
+    S.blocks = textToBlocks(S.book.text, S.blkSize);
+    S.idx = Math.floor(pct * S.blocks.length);
+    displayBlock();
+    if (wasPlaying) play();
+  };
+
+  document.getElementById('blk-dn').addEventListener('click', () => {
+    S.blkSize = Math.max(1, S.blkSize - 1); updateBlkDisplay(); reprocess();
+  });
+  document.getElementById('blk-up').addEventListener('click', () => {
+    S.blkSize = Math.min(5, S.blkSize + 1); updateBlkDisplay(); reprocess();
+  });
+
+  // ── Settings sheet
+  document.getElementById('settings-btn').addEventListener('click', () =>
+    document.getElementById('sheet-overlay').classList.add('open'));
+  document.getElementById('sheet-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('sheet-overlay'))
+      document.getElementById('sheet-overlay').classList.remove('open');
+  });
+
+  // Chip block size
+  document.querySelectorAll('.chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      S.blkSize = +btn.dataset.size;
+      updateBlkDisplay();
+      reprocess();
+    });
+  });
+
+  // ORP toggle
+  document.getElementById('orp-tog').addEventListener('change', e => {
+    S.showORP = e.target.checked;
+    displayBlock();
+  });
+
+  // Pause toggle
+  document.getElementById('pause-tog').addEventListener('change', e => {
+    S.pauseAtPunct = e.target.checked;
+  });
+}
+
+init().catch(console.error);
+</script>
+</body>
+</html>
