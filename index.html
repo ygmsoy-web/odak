@@ -677,17 +677,6 @@
         <button class="chip" data-size="4">4</button>
       </div>
     </div>
-
-    <div class="sheet-row">
-      <div>
-        <div class="sheet-row-label">Noktalama Arası</div>
-        <div class="sheet-row-sub">Cümle sonlarında ekstra duraklama</div>
-      </div>
-      <label class="tog">
-        <input type="checkbox" id="pause-tog" checked>
-        <span class="tog-track"></span>
-      </label>
-    </div>
   </div>
 </div>
 
@@ -736,7 +725,7 @@ const S = {
   timer: null,
   barTop: 45,
   showORP: true,
-  pauseAtPunct: true,
+  pauseAtPunct: false,
   db: null,
 };
 
@@ -799,8 +788,7 @@ function textToBlocks(text, blkSize) {
 
   for (const tok of tokens) {
     cur.push(tok);
-    const hasBoundary = BOUNDARY.test(tok);
-    if (hasBoundary || cur.length >= blkSize) {
+    if (cur.length >= blkSize) {
       blocks.push([...cur]);
       cur = [];
     }
@@ -1006,13 +994,7 @@ function updateProg() {
 // ================================================================
 function blockDuration(block) {
   if (!block) return 200;
-  const wordTime = (S.blkSize / S.wpm) * 60000 * 1.2;
-  const base = Math.max(wordTime, (block.length / S.wpm) * 60000 * 1.2);
-  if (!S.pauseAtPunct) return base;
-  const last = block[block.length - 1];
-  if (SENT_END.test(last))   return base * 1.6;
-  if (BOUNDARY.test(last))   return base * 1.25;
-  return base;
+  return (block.length / S.wpm) * 60000;
 }
 
 function scheduleNext() {
@@ -1255,10 +1237,7 @@ async function init() {
     displayBlock();
   });
 
-  // Pause toggle
-  document.getElementById('pause-tog').addEventListener('change', e => {
-    S.pauseAtPunct = e.target.checked;
-  });
+
   // ── Text Navigator
   document.getElementById('prog-track').addEventListener('click', openNavPanel);
 
