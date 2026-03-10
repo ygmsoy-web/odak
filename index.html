@@ -468,6 +468,71 @@
     .tog input:checked ~ .tog-track { background: var(--accent); }
     .tog input:checked ~ .tog-track::before { transform: translateX(20px); }
 
+    /* ── PROG TRACK (tappable) ──────────────── */
+    .prog-track {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 20px;
+      cursor: pointer;
+      z-index: 5;
+      display: flex;
+      align-items: flex-start;
+    }
+    .prog-track:active { opacity: .7; }
+
+    /* ── TEXT NAVIGATOR ─────────────────────── */
+    .nav-sheet {
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .nav-header {
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .nav-hint {
+      font-size: 12px;
+      color: var(--text2);
+      margin-top: 2px;
+    }
+    .nav-list {
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      flex: 1;
+      padding: 8px 0 12px;
+    }
+    .nav-para {
+      padding: 11px 14px;
+      border-radius: 10px;
+      font-family: var(--font-read);
+      font-size: 14px;
+      line-height: 1.6;
+      cursor: pointer;
+      color: var(--text);
+      transition: background .1s;
+      margin-bottom: 2px;
+      position: relative;
+    }
+    .nav-para:active { background: var(--bg2); }
+    .nav-para.current {
+      background: var(--bg2);
+    }
+    .nav-para.current::before {
+      content: '';
+      position: absolute;
+      left: 4px; top: 14px; bottom: 14px;
+      width: 3px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+    .nav-para-num {
+      font-size: 10px;
+      color: var(--text2);
+      margin-bottom: 3px;
+      font-family: var(--font-ui);
+    }
+
     /* ── LOADING ────────────────────────────── */
     .loading-veil {
       position: fixed; inset: 0;
@@ -542,7 +607,9 @@
   </div>
 
   <div class="rsvp-area" id="rsvp-area">
-    <div class="prog-line" id="prog-line" style="width:0%"></div>
+    <div class="prog-track" id="prog-track" title="Metne git">
+      <div class="prog-line" id="prog-line" style="width:0%"></div>
+    </div>
 
     <div class="rsvp-bar" id="rsvp-bar" style="top:45%">
       <div class="drag-handle" id="drag-handle">
@@ -621,6 +688,18 @@
         <span class="tog-track"></span>
       </label>
     </div>
+  </div>
+</div>
+
+<!-- TEXT NAVIGATOR -->
+<div class="sheet-overlay" id="nav-overlay">
+  <div class="sheet nav-sheet">
+    <div class="sheet-handle"></div>
+    <div class="nav-header">
+      <div class="sheet-title">Metinde Gezin</div>
+      <div class="nav-hint">Bir satıra dokun → oradan başla</div>
+    </div>
+    <div class="nav-list" id="nav-list"></div>
   </div>
 </div>
 
@@ -728,6 +807,34 @@ function textToBlocks(text, blkSize) {
   }
   if (cur.length) blocks.push([...cur]);
   return blocks;
+}
+
+// Build paragraph map: [{text, blockIdx}, ...]
+// Each paragraph gets the block index it starts at
+function buildParaMap(rawText, blkSize) {
+  const paras = rawText
+    .replace(/\r\n|\r/g, '\n')
+    .split(/\n+/)
+    .map(p => p.trim())
+    .filter(p => p.length > 3);
+
+  const map = [];
+  let wordCount = 0;
+
+  for (const para of paras) {
+    const words = para.split(/\s+/).filter(Boolean);
+    // Approximate block index: how many blocks come before this paragraph
+    // We simulate the block builder up to this word count
+    const blockIdx = approxBlockIdx(wordCount, blkSize);
+    map.push({ text: para, blockIdx });
+    wordCount += words.length;
+  }
+  return map;
+}
+
+function approxBlockIdx(wordsBefore, blkSize) {
+  // Simple approximation: wordsBefore / blkSize
+  return Math.floor(wordsBefore / blkSize);
 }
 
 function orpIndex(word) {
@@ -1152,6 +1259,57 @@ async function init() {
   document.getElementById('pause-tog').addEventListener('change', e => {
     S.pauseAtPunct = e.target.checked;
   });
+  // ── Text Navigator
+  document.getElementById('prog-track').addEventListener('click', openNavPanel);
+
+  document.getElementById('nav-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('nav-overlay'))
+      document.getElementById('nav-overlay').classList.remove('open');
+  });
+}
+
+function openNavPanel() {
+  if (!S.book) return;
+  pause();
+
+  const paraMap = buildParaMap(S.book.text, S.blkSize);
+  const list = document.getElementById('nav-list');
+  list.innerHTML = '';
+
+  // Find current paragraph
+  let currentPara = 0;
+  for (let i = 0; i < paraMap.length; i++) {
+    if (paraMap[i].blockIdx <= S.idx) currentPara = i;
+    else break;
+  }
+
+  paraMap.forEach((para, i) => {
+    const div = document.createElement('div');
+    div.className = 'nav-para' + (i === currentPara ? ' current' : '');
+
+    const pct = S.blocks.length
+      ? Math.round((para.blockIdx / S.blocks.length) * 100)
+      : 0;
+
+    div.innerHTML = `<div class="nav-para-num">%${pct}</div>${esc(para.text.slice(0, 180))}${para.text.length > 180 ? '…' : ''}`;
+
+    div.addEventListener('click', () => {
+      S.idx = Math.min(para.blockIdx, S.blocks.length - 1);
+      displayBlock();
+      saveProgress(S.book.id, S.idx);
+      document.getElementById('nav-overlay').classList.remove('open');
+      toast('Konuma atlandı');
+    });
+
+    list.appendChild(div);
+  });
+
+  // Scroll current para into view after render
+  document.getElementById('nav-overlay').classList.add('open');
+  setTimeout(() => {
+    const cur = list.querySelector('.current');
+    if (cur) cur.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, 300);
 }
 
 init().catch(console.error);
