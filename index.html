@@ -1403,12 +1403,6 @@ async function init() {
     });
   });
 
-  // ORP toggle
-  document.getElementById('orp-tog').addEventListener('change', e => {
-    S.showORP = e.target.checked;
-    displayBlock();
-  });
-
 
   // ── Text Navigator
   document.getElementById('nav-goto-btn').addEventListener('click', openNavPanel);
