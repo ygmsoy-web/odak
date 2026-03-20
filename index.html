@@ -517,6 +517,61 @@
     }
     .prog-track:active { opacity: .7; }
 
+    .nav-btn-row {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 4px;
+    }
+    .nav-goto-btn {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      padding: 9px 22px;
+      font-family: var(--font-ui);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text);
+      cursor: pointer;
+      transition: background .1s;
+      width: 100%;
+      justify-content: center;
+    }
+    .nav-goto-btn:active { background: var(--bg2); }
+
+    /* Page strip */
+    .nav-page-strip {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding: 10px 0 2px;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .nav-page-strip::-webkit-scrollbar { display: none; }
+
+    .page-chip {
+      flex-shrink: 0;
+      padding: 5px 14px;
+      border-radius: 100px;
+      border: 1px solid var(--border);
+      background: transparent;
+      font-family: var(--font-ui);
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text2);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background .1s, color .1s;
+    }
+    .page-chip.active {
+      background: var(--text);
+      color: var(--bg);
+      border-color: var(--text);
+    }
+
     /* ── TEXT NAVIGATOR ─────────────────────── */
     .nav-sheet {
       max-height: 85vh;
@@ -682,6 +737,12 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zm2.5-6 6-4.25v8.5L8.5 12zM16 6h2v12h-2z"/></svg>
       </button>
     </div>
+    <div class="nav-btn-row">
+      <button class="nav-goto-btn" id="nav-goto-btn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h7"/></svg>
+        Metne Git
+      </button>
+    </div>
     <div class="ctrl-row2">
       <div class="stepper">
         <button class="step-btn" id="wpm-dn">−</button>
@@ -728,8 +789,9 @@
   <div class="sheet nav-sheet">
     <div class="sheet-handle"></div>
     <div class="nav-header">
-      <div class="sheet-title">Metinde Gezin</div>
-      <div class="nav-hint">Bir satıra dokun → oradan başla</div>
+      <div class="sheet-title">Metne Git</div>
+      <div class="nav-hint">Sayfayı seç → paragrafa dokun → oradan başla</div>
+      <div class="nav-page-strip" id="nav-page-strip"></div>
     </div>
     <div class="nav-list" id="nav-list"></div>
   </div>
@@ -1349,7 +1411,7 @@ async function init() {
 
 
   // ── Text Navigator
-  document.getElementById('prog-track').addEventListener('click', openNavPanel);
+  document.getElementById('nav-goto-btn').addEventListener('click', openNavPanel);
 
   document.getElementById('nav-overlay').addEventListener('click', e => {
     if (e.target === document.getElementById('nav-overlay'))
@@ -1357,48 +1419,117 @@ async function init() {
   });
 }
 
+// Virtual page size in words
+const WORDS_PER_PAGE = 300;
+
 function openNavPanel() {
   if (!S.book) return;
   pause();
 
-  const paraMap = buildParaMap(S.book.text, S.blkSize);
-  const list = document.getElementById('nav-list');
-  list.innerHTML = '';
+  // Build pages from raw text
+  const rawWords = S.book.text
+    .replace(/\r\n|\r/g, '\n')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean);
 
-  // Find current paragraph
-  let currentPara = 0;
-  for (let i = 0; i < paraMap.length; i++) {
-    if (paraMap[i].blockIdx <= S.idx) currentPara = i;
-    else break;
-  }
+  const totalWords = rawWords.length;
+  const pageCount = Math.max(1, Math.ceil(totalWords / WORDS_PER_PAGE));
 
-  paraMap.forEach((para, i) => {
-    const div = document.createElement('div');
-    div.className = 'nav-para' + (i === currentPara ? ' current' : '');
+  // Build paragraphs
+  const paras = S.book.text
+    .replace(/\r\n|\r/g, '\n')
+    .split(/\n+/)
+    .map(p => p.trim())
+    .filter(p => p.length > 3);
 
-    const pct = S.blocks.length
-      ? Math.round((para.blockIdx / S.blocks.length) * 100)
-      : 0;
-
-    div.innerHTML = `<div class="nav-para-num">%${pct}</div>${esc(para.text.slice(0, 180))}${para.text.length > 180 ? '…' : ''}`;
-
-    div.addEventListener('click', () => {
-      S.idx = Math.min(para.blockIdx, S.blocks.length - 1);
-      displayBlock();
-      saveProgress(S.book.id, S.idx);
-      document.getElementById('nav-overlay').classList.remove('open');
-      toast('Konuma atlandı');
-    });
-
-    list.appendChild(div);
+  // Assign each paragraph a word offset and block index
+  let wordOffset = 0;
+  const paraData = paras.map(text => {
+    const words = text.split(/\s+/).filter(Boolean);
+    const blockIdx = Math.floor(wordOffset / S.blkSize);
+    const pageNum = Math.floor(wordOffset / WORDS_PER_PAGE); // 0-based
+    wordOffset += words.length;
+    return { text, blockIdx, pageNum };
   });
 
-  // Scroll current para into view after render
+  // Group paragraphs by page
+  const pages = [];
+  for (let p = 0; p < pageCount; p++) pages.push([]);
+  paraData.forEach(pd => {
+    const pg = Math.min(pd.pageNum, pageCount - 1);
+    pages[pg].push(pd);
+  });
+
+  // Current page
+  const currentWordIdx = S.idx * S.blkSize;
+  let activePage = Math.floor(currentWordIdx / WORDS_PER_PAGE);
+  activePage = Math.max(0, Math.min(activePage, pageCount - 1));
+
+  // Render page strip
+  const strip = document.getElementById('nav-page-strip');
+  strip.innerHTML = '';
+  for (let p = 0; p < pageCount; p++) {
+    const btn = document.createElement('button');
+    btn.className = 'page-chip' + (p === activePage ? ' active' : '');
+    btn.textContent = `Sayfa ${p + 1}`;
+    btn.addEventListener('click', () => {
+      activePage = p;
+      strip.querySelectorAll('.page-chip').forEach((c, i) =>
+        c.classList.toggle('active', i === p));
+      renderParas(pages[p]);
+    });
+    strip.appendChild(btn);
+  }
+
+  // Render paragraphs for a page
+  function renderParas(pageParagraphs) {
+    const list = document.getElementById('nav-list');
+    list.innerHTML = '';
+
+    if (!pageParagraphs.length) {
+      list.innerHTML = '<div style="padding:20px;color:var(--text2);font-size:14px;">Bu sayfada paragraf yok.</div>';
+      return;
+    }
+
+    pageParagraphs.forEach((para, i) => {
+      const isCurrent = para.blockIdx <= S.idx &&
+        (i === pageParagraphs.length - 1 || pageParagraphs[i + 1].blockIdx > S.idx);
+
+      const div = document.createElement('div');
+      div.className = 'nav-para' + (isCurrent ? ' current' : '');
+
+      const preview = para.text.slice(0, 160) + (para.text.length > 160 ? '…' : '');
+      div.innerHTML = `<div class="nav-para-num">Satır ${i + 1}</div>${esc(preview)}`;
+
+      div.addEventListener('click', () => {
+        S.idx = Math.min(para.blockIdx, S.blocks.length - 1);
+        displayBlock();
+        saveProgress(S.book.id, S.idx);
+        document.getElementById('nav-overlay').classList.remove('open');
+        toast(`Sayfa ${activePage + 1}, satır ${i + 1}'e atlandı`);
+      });
+
+      list.appendChild(div);
+    });
+
+    // Scroll current into view
+    setTimeout(() => {
+      const cur = list.querySelector('.current');
+      if (cur) cur.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 100);
+  }
+
+  // Open panel and render current page
   document.getElementById('nav-overlay').classList.add('open');
+  renderParas(pages[activePage]);
+
+  // Scroll active chip into view
   setTimeout(() => {
-    const cur = list.querySelector('.current');
-    if (cur) cur.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }, 300);
+    const activeChip = strip.querySelector('.active');
+    if (activeChip) activeChip.scrollIntoView({ inline: 'center', behavior: 'smooth' });
+  }, 150);
 }
 
 init().catch(console.error);
